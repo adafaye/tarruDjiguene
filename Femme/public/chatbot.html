@@ -1,0 +1,301 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <title>Chatbot Santé Féminine - CycleFem</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      background: #f7f7f7;
+      margin: 0;
+      padding: 0;
+    }
+    .chat-container {
+      max-width: 600px;
+      margin: 50px auto;
+      background: white;
+      border-radius: 8px;
+      box-shadow: 0 0 10px rgba(0,0,0,0.1);
+      padding: 20px;
+    }
+    .messages {
+      height: 300px;
+      overflow-y: auto;
+      border: 1px solid #ddd;
+      padding: 10px;
+      margin-bottom: 15px;
+      background: #fafafa;
+    }
+    .message {
+      margin-bottom: 10px;
+      padding: 8px;
+      border-radius: 5px;
+    }
+    .user {
+      background: #e3f2fd;
+      margin-left: 20%;
+      text-align: right;
+    }
+    .ai {
+      background: #f5f5f5;
+      margin-right: 20%;
+    }
+    .error {
+      background: #ffebee;
+      color: #c62828;
+      text-align: center;
+    }
+    .auth-section {
+      background: #e8f5e8;
+      padding: 10px;
+      border-radius: 5px;
+      margin-bottom: 15px;
+      text-align: center;
+    }
+    input, button {
+      padding: 10px;
+      font-size: 16px;
+      margin: 5px;
+    }
+    input {
+      width: 70%;
+      border: 1px solid #ccc;
+      border-radius: 4px;
+    }
+    button {
+      background: #007bff;
+      color: white;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+    }
+    button:hover {
+      background: #0056b3;
+    }
+    button:disabled {
+      background: #6c757d;
+      cursor: not-allowed;
+    }
+    .loading {
+      display: inline-block;
+      width: 16px;
+      height: 16px;
+      border: 2px solid #ffffff;
+      border-radius: 50%;
+      border-top-color: transparent;
+      animation: spin 1s ease-in-out infinite;
+    }
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+  </style>
+</head>
+<body>
+  <div class="chat-container">
+    <h2>Chatbot Santé Féminine</h2>
+    
+    <!-- Section authentification -->
+    <div class="auth-section" id="authSection">
+      <p><strong> Authentification requise</strong></p>
+      <button onclick="simulateLogin()">Se connecter (Démo)</button>
+      <button onclick="testConnection()">Tester la connexion</button>
+      <div id="authStatus"></div>
+    </div>
+
+    <div class="messages" id="messages">
+      <div class="message ai">
+        <strong>Assistante CycleFem:</strong><br>
+        Bonjour ! Je suis votre assistante santé spécialisée dans le cycle menstruel. <br><br>
+        Je peux vous aider avec :
+        • Le suivi de votre cycle
+        • Les prédictions de règles
+        • L'ovulation et fertilité
+        • Des conseils santé<br><br>
+        <em>Veuillez d'abord vous connecter pour commencer.</em>
+      </div>
+    </div>
+
+    <div>
+      <input type="text" id="userInput" placeholder="Posez votre question..." />
+      <button onclick="sendMessage()" id="sendButton">Envoyer</button>
+    </div>
+
+    <div style="margin-top: 15px; text-align: center;">
+      <small>Exemples: "Quand seront mes prochaines règles ?", "Comment calculer ma période fertile ?"</small>
+    </div>
+  </div>
+
+  <script>
+    // Stockage du token
+    let authToken = null;
+
+    // Au chargement de la page
+    document.addEventListener('DOMContentLoaded', function() {
+      checkAuthStatus();
+      document.getElementById('userInput').addEventListener('keypress', function(e) {
+        if (e.key === 'Enter') {
+          sendMessage();
+        }
+      });
+    });
+
+    // Vérifier le statut d'authentification
+    function checkAuthStatus() {
+      authToken = localStorage.getItem('token') || sessionStorage.getItem('token');
+      const authSection = document.getElementById('authSection');
+      const authStatus = document.getElementById('authStatus');
+      
+      if (authToken) {
+        authSection.innerHTML = `
+          <p style="color: green;"> Connecté - Mode démo activé</p>
+          <button onclick="logout()">Se déconnecter</button>
+          <button onclick="testConnection()">Tester l'API</button>
+        `;
+        addMessage('system', ' Vous êtes maintenant connecté ! Posez-moi vos questions.');
+      } else {
+        authStatus.innerHTML = '<p style="color: orange;"> Non connecté</p>';
+      }
+    }
+
+    // Simuler une connexion (pour la démo)
+    function simulateLogin() {
+      authToken = 'demo-token-' + Date.now();
+      localStorage.setItem('token', authToken);
+      console.log('Token de démo:', authToken);
+      addMessage('system', ' Connexion réussie ! Mode démo activé.');
+      checkAuthStatus();
+    }
+
+    // Déconnexion
+    function logout() {
+      localStorage.removeItem('token');
+      sessionStorage.removeItem('token');
+      authToken = null;
+      addMessage('system', ' Déconnecté. Veuillez vous reconnecter.');
+      checkAuthStatus();
+    }
+
+    // Tester la connexion à l'API
+    async function testConnection() {
+      try {
+        const response = await fetch('/api/health');
+        const data = await response.json();
+        addMessage('system', ` Serveur connecté: ${data.service} - ${data.ai}`);
+        console.log('Health check:', data);
+      } catch (error) {
+        addMessage('error', ' Serveur inaccessible. Vérifiez que le serveur est démarré.');
+        console.error('Health check failed:', error);
+      }
+    }
+
+    // Fonction principale pour envoyer un message
+    async function sendMessage() {
+      const input = document.getElementById('userInput');
+      const userText = input.value.trim();
+      
+      if (!userText) return;
+
+      // Vérifier l'authentification
+      if (!authToken) {
+        addMessage('error', 'Veuillez d\'abord vous connecter en cliquant sur "Se connecter (Démo)"');
+        return;
+      }
+
+      // Afficher le message utilisateur
+      addMessage('user', userText);
+      input.value = '';
+      setLoadingState(true);
+
+      try {
+        console.log(' Envoi du message:', userText);
+        
+        const response = await fetch('/api/chat', {
+          method: 'POST',
+          headers: { 
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${authToken}`
+          },
+          body: JSON.stringify({ message: userText })
+        });
+
+        console.log('Statut réponse:', response.status);
+        
+        const data = await response.json();
+        console.log(' Données reçues:', data);
+
+        if (!response.ok) {
+          throw new Error(data.error || `Erreur ${response.status}`);
+        }
+
+        // Afficher la réponse
+        addMessage('ai', data.response);
+        
+        // Indiquer si c'est le mode secours
+        if (data.fallback) {
+          addMessage('system', ' Mode assistance de base activé');
+        }
+
+      } catch (error) {
+        console.error(' Erreur:', error);
+        
+        let errorMessage = "Désolé, je rencontre des difficultés techniques. ";
+        
+        if (error.message.includes('Failed to fetch')) {
+          errorMessage += "Problème de connexion au serveur.";
+        } else if (error.message.includes('401') || error.message.includes('403')) {
+          errorMessage += "Problème d'authentification. Veuillez vous reconnecter.";
+          logout();
+        } else {
+          errorMessage += "Voici des informations générales :<br><br>";
+          errorMessage += " <strong>Pour vos prochaines règles :</strong><br>";
+          errorMessage += "• La durée moyenne d'un cycle est de 28 jours<br>";
+          errorMessage += "• L'ovulation a lieu environ 14 jours avant les règles<br>";
+          errorMessage += "• La période fertile dure 5-6 jours autour de l'ovulation<br><br>";
+          errorMessage += "Pour des prévisions personnalisées, enregistrez vos cycles dans l'application.";
+        }
+        
+        addMessage('ai', errorMessage);
+      } finally {
+        setLoadingState(false);
+      }
+    }
+
+    // Fonction utilitaire pour ajouter des messages
+    function addMessage(type, text) {
+      const messages = document.getElementById('messages');
+      const messageDiv = document.createElement('div');
+      messageDiv.className = `message ${type}`;
+      
+      let prefix = '';
+      if (type === 'user') prefix = '<strong>Vous:</strong> ';
+      else if (type === 'ai') prefix = '<strong>Assistante:</strong> ';
+      else if (type === 'system') prefix = ' ';
+      else if (type === 'error') prefix = ' ';
+      
+      messageDiv.innerHTML = prefix + text;
+      messages.appendChild(messageDiv);
+      messages.scrollTop = messages.scrollHeight;
+    }
+
+    // Gérer l'état de chargement
+    function setLoadingState(loading) {
+      const button = document.getElementById('sendButton');
+      const input = document.getElementById('userInput');
+      
+      if (loading) {
+        button.disabled = true;
+        button.innerHTML = '<div class="loading"></div>';
+        input.disabled = true;
+        input.placeholder = 'Envoi en cours...';
+      } else {
+        button.disabled = false;
+        button.innerHTML = 'Envoyer';
+        input.disabled = false;
+        input.placeholder = 'Posez votre question...';
+        input.focus();
+      }
+    }
+  </script>
+</body>
+</html>
